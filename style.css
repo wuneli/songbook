@@ -204,3 +204,27 @@ textarea.field { font-family: var(--mono); font-size: 14px; line-height: 1.45; m
 .ib:disabled { opacity: .25; }
 .sheet-f { text-align: center; color: var(--muted); font-size: 13px; }
 .sheet-sug { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; justify-content: center; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
+
+/* ------------------------------------------------------------ setlists */
+.chip.set { box-shadow: inset 0 0 0 1px var(--accent); }
+.chip.set.on { background: var(--accent); color: #fff; box-shadow: none; }
+.sethead { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 4px 0 8px; max-width: 900px; }
+.sethead b { font-size: 18px; }
+.sethead .grow { flex: 1; }
+.setitem { display: flex; align-items: center; border-bottom: 1px solid var(--line); }
+.setitem a { flex: 1; display: flex; align-items: center; gap: 12px; border-bottom: 0 !important; }
+.setitem .num { min-width: 1.6em; text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; font-weight: 700; }
+.setnav {
+  position: fixed; z-index: 10; left: 0; right: 0; bottom: 0; display: flex; align-items: center; gap: 4px;
+  padding: 6px max(8px, env(safe-area-inset-right)) calc(6px + env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left));
+  background: color-mix(in srgb, var(--bg) 92%, transparent); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  border-top: 1px solid var(--line);
+}
+.setnav .ib { font-size: 26px; width: 52px; height: 48px; }
+.setnav .grow { flex: 1; min-width: 0; text-align: center; display: flex; flex-direction: column; }
+.setnav small { color: var(--accent); font-weight: 700; }
+.setnav span { font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.page.has-setnav { padding-bottom: calc(90px + env(safe-area-inset-bottom)); }
+.scrollctl.above-nav { bottom: calc(76px + env(safe-area-inset-bottom)); }
+.btn { text-decoration: none; }
+.btn svg { width: 14px; height: 14px; fill: currentColor; stroke: none; }

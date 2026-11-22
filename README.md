@@ -17,6 +17,12 @@ Alles ist statisch: GitHub Pages liefert die App aus. Die Songs liegen als [Chor
   - Stimmungen: Gitarre (Standard, Drop D/C, Open G/D/C, DADGAD, …), Banjo (Open G, Double C, …), Ukulele, Mandoline, dazu eigene.
   - Die Griffe werden für jede Stimmung berechnet, nicht nachgeschlagen.
   - **Capo / Auto-Transpose:** Die App schlägt vor, mit welchem Kapodaster oder welcher Transposition die Akkorde in der gewählten Stimmung am besten liegen, z. B. ein Song in A auf Banjo Open G → „Capo 2 · G-Griffe“.
+- **Setlists:**
+  - Im Song über „Anzeige → ♪ Setlist“ hinzufügen oder eine neue anlegen. Technisch ist das ein Tag `set:name`.
+  - In der Liste erscheinen Setlists als farbige Chips zuerst. Antippen zeigt die Songs nummeriert, mit „Reihenfolge“ zum Umsortieren und „Start“.
+  - Im Song blätterst du unten mit ‹ ›, per Wischen oder mit Pfeiltasten bzw. Bluetooth-Pedal zum nächsten Song.
+- **Synchronisiert über Geräte** (Datei `songbook.json` im Songs-Repo): Kapodaster, Transponierung, Stimmung je Song, gewählte Griffe, eigene Stimmungen, Setlist-Reihenfolge.
+  Nur auf dem jeweiligen Gerät bleiben Schriftgröße, Farbschema, Spalten, Scroll-Tempo und der Token.
 - **Neuer Song (+):** Text einfach von einer Akkord-Webseite einfügen. Akkorde über dem Text werden automatisch in Inline-Akkorde umgewandelt.
 - **Tags:** Neue Tags legst du beim Bearbeiten an. Unter Einstellungen → Tags lassen sie sich für alle Songs umbenennen oder entfernen.
 
