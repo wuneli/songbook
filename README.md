@@ -12,6 +12,11 @@ Alles ist statisch: GitHub Pages liefert die App aus. Die Songs liegen als [Chor
   - Die Schriftgröße geht auch per Pinch.
   - Ein Tipp auf den Text blendet die Leiste aus.
   - Der Bildschirm bleibt an.
+- **Griffbilder:** Tipp auf einen Akkord öffnet das Griffbild. Mit ‹ › blätterst du durch die Griffe (offen, Barré, höhere Lagen).
+  Unter „Anzeige → Griffe“ erscheinen alle Akkorde des Songs.
+  - Stimmungen: Gitarre (Standard, Drop D/C, Open G/D/C, DADGAD, …), Banjo (Open G, Double C, …), Ukulele, Mandoline, dazu eigene.
+  - Die Griffe werden für jede Stimmung berechnet, nicht nachgeschlagen.
+  - **Capo / Auto-Transpose:** Die App schlägt vor, mit welchem Kapodaster oder welcher Transposition die Akkorde in der gewählten Stimmung am besten liegen, z. B. ein Song in A auf Banjo Open G → „Capo 2 · G-Griffe“.
 - **Neuer Song (+):** Text einfach von einer Akkord-Webseite einfügen. Akkorde über dem Text werden automatisch in Inline-Akkorde umgewandelt.
 - **Tags:** Neue Tags legst du beim Bearbeiten an. Unter Einstellungen → Tags lassen sie sich für alle Songs umbenennen oder entfernen.
 

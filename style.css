@@ -176,3 +176,31 @@ textarea.field { font-family: var(--mono); font-size: 14px; line-height: 1.45; m
 }
 #toast.show { transform: translateX(-50%) translateY(0); opacity: 1; pointer-events: auto; }
 #toast button { background: none; border: 0; color: var(--accent); font-weight: 700; cursor: pointer; padding: 0; }
+
+/* ------------------------------------------------------------ chord diagrams */
+.dia .dot { fill: var(--chord); }
+.chordline b.ct { display: inline; padding: 0; }
+.c b, .chordline b { cursor: pointer; }
+.strip { display: flex; gap: 6px; overflow-x: auto; padding: 10px 0 4px; margin-top: .4em; scrollbar-width: thin; font-size: 14px; }
+.dia-card {
+  flex: none; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 4px 6px 2px;
+  border: 1px solid var(--line); border-radius: 10px; background: var(--card); cursor: pointer; min-width: 72px;
+}
+.dia-card b { color: var(--chord); font-size: 14px; }
+.dia-card.tun { justify-content: center; text-align: center; max-width: 120px; font-size: 12px; gap: 4px; }
+.dia-card.tun small { color: var(--muted); }
+.dia-card.tun em { color: var(--accent); font-style: normal; font-weight: 700; }
+.dia-none { color: var(--muted); padding: 30px 0; }
+.sheet {
+  position: fixed; z-index: 30; left: 0; right: 0; bottom: 0; margin: 0 auto; max-width: 520px;
+  background: var(--card); border: 1px solid var(--line); border-bottom: 0; border-radius: 16px 16px 0 0;
+  box-shadow: 0 -10px 40px rgb(0 0 0 / .3); padding: 8px 10px calc(14px + env(safe-area-inset-bottom));
+}
+.sheet-h { display: flex; align-items: center; gap: 2px; }
+.sheet-name { font-size: 22px; color: var(--chord); min-width: 3.2em; text-align: center; }
+.sheet-tun { flex: 1; min-width: 0; min-height: 36px; padding: 4px 8px; font-size: 14px; margin-left: 6px; }
+.sheet-b { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 6px 0; }
+.sheet-b .big { font-size: 28px; width: 48px; height: 64px; }
+.ib:disabled { opacity: .25; }
+.sheet-f { text-align: center; color: var(--muted); font-size: 13px; }
+.sheet-sug { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; justify-content: center; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }

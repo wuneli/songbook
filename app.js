@@ -2,6 +2,7 @@ import {
   parse, transposeChord, transposeChordText, cleanPasted, chordsOverLyricsToInline,
   hasChordsOverLyrics, splitHeader, buildSong, slugify,
 } from './chordpro.js';
+import { TUNINGS, getTuning, parseNotes, voicings, voicingLabel, diagramSVG, voicingNotes, chordTones, suggestOffsets, fitCost } from './chords.js';
 
 // ================================================================ state
 
@@ -13,11 +14,15 @@ const LS = {
 const settings = Object.assign({
   repo: '', branch: 'main', token: '', theme: 'auto',
   fs: 19, chords: true, cols: false, speed: 25,
+  tuning: 'gtr', customTunings: [], diagrams: false,
 }, LS.get('sb.settings', {}));
 const saveSettings = () => LS.set('sb.settings', settings);
 
 let cache = LS.get('sb.cache', { commit: null, files: {} }); // files: {path: {sha, text}}
 const transpose = LS.get('sb.transpose', {}); // path -> semitones
+const songTuning = LS.get('sb.songTuning', {}); // path -> tuning id
+const voicingPick = LS.get('sb.voicing', {}); // "notes|chord" -> index
+const songCapo = LS.get('sb.capo', {}); // path -> capo fret
 const S = {
   songs: [], query: LS.get('sb.query', ''), tags: new Set(LS.get('sb.filter', [])),
   status: '', error: '', syncing: false,
@@ -346,7 +351,9 @@ function renderBody(song, { chords, tr }) {
       case 'empty': html += '<div class="gap"></div>'; break;
       case 'section': html += `<div class="sec">${esc(b.text)}</div>`; break;
       case 'comment': html += `<div class="l cmt${cho}">${esc(b.text)}</div>`; break;
-      case 'chordtext': html += `<div class="l chordline${cho}">${esc(transposeChordText(b.text, tr))}</div>`; break;
+      case 'chordtext':
+        html += `<div class="l chordline${cho}">${esc(transposeChordText(b.text, tr)).replace(/\S+/g, t => (chordTones(t) ? `<b class="ct">${t}</b>` : t))}</div>`;
+        break;
       case 'chords':
         html += `<div class="l chordline${cho}">${b.segs.map(s => (s.chord != null ? `<b>${esc(transposeChord(s.chord, tr))}</b>` : '') + esc(transposeChordText(s.text.trim(), tr) + (s.text.trim() ? ' ' : ''))).join('')}</div>`;
         break;
@@ -384,6 +391,163 @@ function lyricHtml(segs, tr) {
   return html;
 }
 
+// ================================================================ chord diagrams
+
+function allTunings() { return [...TUNINGS, ...settings.customTunings]; }
+
+/** Tuning for a song: chosen for this song > {tuning: ...} in the file > last used. */
+function tuningFor(path, meta) {
+  return getTuning(songTuning[path] || meta.tuning || settings.tuning, settings.customTunings);
+}
+
+function songChords(song, tr) {
+  const seen = new Set();
+  const add = c => { const t = transposeChord(c.replace(/\*+$/, ''), tr); if (chordTones(t)) seen.add(t); };
+  for (const b of song.parsed.blocks) {
+    if (b.segs) b.segs.forEach(s => { if (s.chord) add(s.chord); if (b.type === 'chords') s.text.split(/\s+/).forEach(t => t && add(t)); });
+    if (b.type === 'chordtext') b.text.split(/\s+/).forEach(t => t && add(t));
+  }
+  return [...seen];
+}
+
+function pickedVoicing(chord, tuning) {
+  const list = voicings(chord, tuning);
+  const i = Math.min(voicingPick[tuning.notes + '|' + chord] || 0, Math.max(0, list.length - 1));
+  return { list, i, v: list[i] };
+}
+
+/**
+ * Capo / transpose suggestions for the current tuning.
+ * sounding: chords at concert pitch; cur: current shape offset (tr - capo).
+ */
+function keySuggestions(sounding, tuning, cur, ref) {
+  if (!sounding.length) return { list: [], curCost: 0 };
+  const ranked = suggestOffsets(sounding, tuning, transposeChord).map(x => ({ ...x, cost: x.cost + Math.abs(x.k) * 0.05 }))
+    .sort((a, b) => a.cost - b.cost);
+  const curCost = ranked.find(x => x.k === ((cur + 18) % 12) - 6)?.cost ?? fitCost(sounding.map(c => transposeChord(c, cur)), tuning);
+  const list = ranked.slice(0, 3).map(({ k, cost }) => {
+    const shapeKey = transposeChord(ref, k);
+    const capo = (12 - k) % 12;
+    if (k === 0) return { k, cost, capo: 0, tr: 0, label: `Ohne Capo (${shapeKey})` };
+    if (capo >= 1 && capo <= 7) return { k, cost, capo, tr: 0, label: `Capo ${capo} · ${shapeKey}-Griffe` };
+    return { k, cost, capo: 0, tr: k, label: `Transponieren → ${shapeKey}` };
+  });
+  return { list, curCost };
+}
+
+function stripHtml(chords, tuning, hint) {
+  return `<div class="strip">${chords.map(c => {
+    const { v } = pickedVoicing(c, tuning);
+    return `<button class="dia-card" data-chord="${esc(c)}"><b>${esc(c)}</b>${v ? diagramSVG(v, tuning, { width: 64 }) : '<span class="dia-none">?</span>'}</button>`;
+  }).join('')}<button class="dia-card tun" data-chord="${esc(chords[0] || '')}"><small>${esc(tuning.group)}</small><span>${esc(tuning.name)}</span>${hint ? `<em>Tipp: ${esc(hint)}</em>` : ''}</button></div>`;
+}
+
+function tuningOptions(selId) {
+  const groups = {};
+  for (const t of allTunings()) (groups[t.group] = groups[t.group] || []).push(t);
+  return Object.entries(groups).map(([g, ts]) => `<optgroup label="${esc(g)}">${ts.map(t =>
+    `<option value="${esc(t.id)}" ${t.id === selId ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}</optgroup>`).join('') +
+    '<option value="__new">Eigene Stimmung…</option>';
+}
+
+/** Ask for a custom tuning; returns the new tuning id or null. */
+function addCustomTuning() {
+  const notes = prompt('Eigene Stimmung – Saiten von links (tief) nach rechts, z.B.\n"D G D G B D", "C G C F A D" oder Banjo "gDGBD":');
+  if (!notes) return null;
+  const strs = parseNotes(notes);
+  if (!strs) { toast('Das konnte ich nicht lesen – Notennamen mit Leerzeichen, 3–8 Saiten.'); return null; }
+  const name = prompt('Name der Stimmung:', notes.trim()) || notes.trim();
+  const t = { id: 'c' + Date.now().toString(36), group: 'Eigene', name, notes: notes.trim(), drone: strs.length === 5 && /^[a-h]/.test(notes.trim()) };
+  settings.customTunings.push(t);
+  saveSettings();
+  return t.id;
+}
+
+function openSheet(chord, path, meta, chords, redraw, ctx) {
+  document.getElementById('sheet')?.remove();
+  const el = document.createElement('div');
+  el.id = 'sheet';
+  el.className = 'sheet';
+  document.body.appendChild(el);
+  let idx = Math.max(0, chords.indexOf(chord));
+  if (!chords.includes(chord)) chords = [chord, ...chords];
+
+  const render = () => {
+    const tuning = tuningFor(path, meta);
+    const name = chords[idx];
+    const { list, i, v } = pickedVoicing(name, tuning);
+    const flat = name[1] === 'b';
+    el.innerHTML = `
+      <div class="sheet-h">
+        <button class="ib" data-s="pc" aria-label="Vorheriger Akkord" ${chords.length > 1 ? '' : 'disabled'}>‹</button>
+        <b class="sheet-name">${esc(name)}</b>
+        <button class="ib" data-s="nc" aria-label="Nächster Akkord" ${chords.length > 1 ? '' : 'disabled'}>›</button>
+        <select class="field sheet-tun" aria-label="Stimmung">${tuningOptions(tuning.id)}</select>
+        <button class="ib" data-s="x" aria-label="Schließen">✕</button>
+      </div>
+      <div class="sheet-b">
+        <button class="ib big" data-s="pv" aria-label="Vorheriger Griff" ${list.length > 1 ? '' : 'disabled'}>‹</button>
+        <div class="dia-big">${v ? diagramSVG(v, tuning, { width: 170 }) : '<p class="hint">Kein spielbarer Griff gefunden.</p>'}</div>
+        <button class="ib big" data-s="nv" aria-label="Nächster Griff" ${list.length > 1 ? '' : 'disabled'}>›</button>
+      </div>
+      <div class="sheet-f">${v ? `Griff ${i + 1}/${list.length} · ${voicingLabel(v)} · ${voicingNotes(v, tuning, flat).join(' ')}` : ''}</div>
+      ${sugHtml(tuning)}`;
+    el.querySelector('select').onchange = e => {
+      let id = e.target.value;
+      if (id === '__new') id = addCustomTuning();
+      if (id) { songTuning[path] = id; settings.tuning = id; LS.set('sb.songTuning', songTuning); saveSettings(); }
+      render(); redraw();
+    };
+  };
+  function sugHtml(tuning) {
+    const { list, curCost } = ctx.suggest(tuning);
+    const isCur = sg => sg.capo === ctx.capo() && sg.tr === ctx.tr();
+    const better = list.filter(sg => sg.cost < curCost - 0.5 && !isCur(sg));
+    const o = ctx.original;
+    const reset = isCur(o) ? '' : `<button class="chip" data-s="sg" data-capo="${o.capo}" data-tr="0">Zurück zum Original</button>`;
+    return `<div class="sheet-sug">${better.length
+      ? `<span class="hint">Besser spielbar in dieser Stimmung:</span>${better.map(sg => `<button class="chip" data-s="sg" data-capo="${sg.capo}" data-tr="${sg.tr}">${esc(sg.label)}</button>`).join('')}`
+      : '<span class="hint">Passt gut zu dieser Stimmung.</span>'}${reset}</div>`;
+  }
+  const shift = d => {
+    const tuning = tuningFor(path, meta);
+    const name = chords[idx];
+    const { list, i } = pickedVoicing(name, tuning);
+    if (!list.length) return;
+    voicingPick[tuning.notes + '|' + name] = (i + d + list.length) % list.length;
+    LS.set('sb.voicing', voicingPick);
+    render(); redraw();
+  };
+  el.addEventListener('click', e => {
+    const b = e.target.closest('[data-s]');
+    if (!b) return;
+    const a = b.dataset.s;
+    if (a === 'x') close();
+    else if (a === 'pv') shift(-1);
+    else if (a === 'nv') shift(1);
+    else if (a === 'sg') { ctx.apply(Number(b.dataset.capo), Number(b.dataset.tr)); close(); }
+    else if (a === 'pc') { idx = (idx - 1 + chords.length) % chords.length; render(); }
+    else if (a === 'nc') { idx = (idx + 1) % chords.length; render(); }
+  });
+  let x0 = null;
+  el.addEventListener('touchstart', e => { x0 = e.touches[0].clientX; }, { passive: true });
+  el.addEventListener('touchend', e => {
+    if (x0 == null) return;
+    const dx = e.changedTouches[0].clientX - x0;
+    x0 = null;
+    if (Math.abs(dx) > 50 && !e.target.closest('select')) shift(dx < 0 ? 1 : -1);
+  });
+  const onKey = e => {
+    if (e.key === 'Escape') { e.stopPropagation(); close(); }
+    else if (e.key === 'ArrowRight') shift(1);
+    else if (e.key === 'ArrowLeft') shift(-1);
+  };
+  document.addEventListener('keydown', onKey, true);
+  function close() { el.remove(); document.removeEventListener('keydown', onKey, true); window.removeEventListener('hashchange', close); }
+  window.addEventListener('hashchange', close);
+  render();
+}
+
 function viewSong(path) {
   const song = findSong(path);
   if (!song) {
@@ -394,6 +558,11 @@ function viewSong(path) {
   document.title = song.title;
   const m = song.parsed.meta;
   let tr = transpose[path] || 0;
+  const fileCapo = Number(m.capo) || 0; // chords in the file are shapes for this capo
+  let capo = songCapo[path] ?? fileCapo;
+  const shapeTr = () => fileCapo + tr - capo; // offset from file chords to displayed shapes
+  const refChord = () => m.key || songChords(song, fileCapo)[0] || 'C';
+  const suggest = tuning => keySuggestions(songChords(song, fileCapo), tuning, tr - capo, refChord());
   const hasChords = song.parsed.blocks.some(b => ['chords', 'chordtext', 'tab'].includes(b.type) || (b.segs && b.segs.some(s => s.chord != null)));
 
   app.innerHTML = `
@@ -406,8 +575,10 @@ function viewSong(path) {
     </header>
     <div class="tools" id="tools" hidden>
       <div class="grp"><span class="lbl">Größe</span><button class="ib" data-a="fs-">A−</button><span class="val" id="vFs"></span><button class="ib" data-a="fs+">A+</button></div>
+      ${hasChords ? `<div class="grp"><span class="lbl">Capo</span><button class="ib" data-a="cap-">−</button><span class="val" id="vCap"></span><button class="ib" data-a="cap+">+</button></div>` : ''}
       ${hasChords ? `<div class="grp"><span class="lbl">Transp.</span><button class="ib" data-a="tr-">−</button><button class="ib val" id="vTr" data-a="tr0" title="Zurücksetzen"></button><button class="ib" data-a="tr+">+</button></div>` : ''}
       <div class="grp"><span class="lbl">Scroll</span><button class="ib" data-a="scroll">${icon('play')}</button></div>
+      ${hasChords ? `<div class="grp"><button class="ib ${settings.diagrams ? 'on' : ''}" data-a="dia" title="Griffbilder aller Akkorde">Griffe</button></div>` : ''}
       <div class="grp"><button class="ib ${settings.cols ? 'on' : ''}" data-a="cols" title="Spalten (Tablet/Desktop)">Spalten</button></div>
     </div>
     <div class="page">
@@ -415,6 +586,7 @@ function viewSong(path) {
         <h1>${esc(song.title)}</h1>
         ${song.artist ? `<div class="artist">${esc(song.artist)}</div>` : ''}
         <div class="meta" id="meta"></div>
+        <div id="strip"></div>
         <div class="body" id="body"></div>
         ${song.tags.length ? `<div class="tags wrap song-tags">${song.tags.map(t => `<button class="chip" data-tag="${esc(t)}">${esc(t)}</button>`).join('')}</div>` : ''}
       </article>
@@ -433,9 +605,20 @@ function viewSong(path) {
 
   const draw = () => {
     songEl.style.setProperty('--fs', settings.fs + 'px');
-    bodyEl.innerHTML = renderBody(song, { chords: settings.chords, tr });
+    bodyEl.innerHTML = renderBody(song, { chords: settings.chords, tr: shapeTr() });
+    let stripH = '';
+    if (settings.diagrams && settings.chords && hasChords) {
+      const tuning = tuningFor(path, m);
+      const sg = keySuggestions(songChords(song, fileCapo), tuning, tr - capo, refChord());
+      const best = sg.list[0];
+      const hint = best && best.cost < sg.curCost - 0.8 && !(best.capo === capo && best.tr === tr) ? best.label : '';
+      stripH = stripHtml(songChords(song, shapeTr()), tuning, hint);
+    }
+    app.querySelector('#strip').innerHTML = stripH;
     const key = m.key ? transposeChord(m.key, tr) : '';
-    app.querySelector('#meta').textContent = [key && `Tonart ${key}`, m.capo && `Capo ${m.capo}`, m.tempo && `${m.tempo} bpm`].filter(Boolean).join(' · ');
+    app.querySelector('#meta').textContent = [key && `Tonart ${key}`, capo && `Capo ${capo}`, m.tempo && `${m.tempo} bpm`].filter(Boolean).join(' · ');
+    const vCap = app.querySelector('#vCap');
+    if (vCap) vCap.textContent = capo;
     app.querySelector('#vFs').textContent = settings.fs;
     const vTr = app.querySelector('#vTr');
     if (vTr) vTr.textContent = tr > 0 ? `+${tr}` : tr;
@@ -469,12 +652,17 @@ function viewSong(path) {
       case 'tr-': tr = (tr - 1) % 12; break;
       case 'tr+': tr = (tr + 1) % 12; break;
       case 'tr0': tr = 0; break;
+      case 'cap-': capo = Math.max(0, capo - 1); break;
+      case 'cap+': capo = Math.min(9, capo + 1); break;
+      case 'dia': settings.diagrams = !settings.diagrams; app.querySelector('[data-a=dia]').classList.toggle('on', settings.diagrams); break;
       case 'cols': settings.cols = !settings.cols; songEl.classList.toggle('cols', settings.cols); app.querySelector('[data-a=cols]').classList.toggle('on', settings.cols); break;
       case 'scroll': setScroll(!scrolling); return;
       case 'slow': settings.speed = Math.max(5, settings.speed - 5); toast(`${settings.speed} px/s`); break;
       case 'fast': settings.speed = Math.min(200, settings.speed + 5); toast(`${settings.speed} px/s`); break;
     }
     if (tr) transpose[path] = tr; else delete transpose[path];
+    if (capo !== fileCapo) songCapo[path] = capo; else delete songCapo[path];
+    LS.set('sb.capo', songCapo);
     LS.set('sb.transpose', transpose);
     saveSettings();
     draw();
@@ -491,6 +679,14 @@ function viewSong(path) {
       draw(); return;
     }
     if (e.target.closest('#tTools')) { tools.hidden = !tools.hidden; bar.classList.remove('away'); return; }
+    const ch = e.target.closest('.c b, .chordline b, [data-chord]');
+    if (ch && settings.chords) {
+      const name = ch.dataset.chord || ch.textContent.trim();
+      if (chordTones(name)) { openSheet(name, path, m, songChords(song, shapeTr()), draw, {
+        suggest, capo: () => capo, tr: () => tr, original: { capo: fileCapo, tr: 0 },
+        apply: (c, t) => { capo = c; tr = t; act('noop'); toast(c ? `Capo ${c} – Akkorde als Griffe angezeigt` : t ? `Transponiert um ${t > 0 ? '+' : ''}${t}` : 'Original'); },
+      }); return; }
+    }
     if (e.target.closest('#song')) {
       if (scrolling) return setScroll(false);
       if (!tools.hidden) { tools.hidden = true; return; }
@@ -736,6 +932,13 @@ function viewSettings() {
           </select>
         </label>
       </section>
+      <section class="form">
+        <h3>Stimmung für Griffbilder</h3>
+        <label>Standard für neue Songs<select class="field" id="sTuning">${tuningOptions(settings.tuning)}</select></label>
+        <p class="hint">Im Song tippst du auf einen Akkord oder schaltest unter „Anzeige → Griffe“ alle Griffbilder ein. Die dort gewählte Stimmung merkt sich jeder Song.
+          Im Songtext geht auch <code>{tuning: Double C}</code> oder <code>{tuning: gCGCD}</code>.</p>
+        ${settings.customTunings.length ? `<ul class="taglist">${settings.customTunings.map(t => `<li><span>${esc(t.name)} <small class="hint">${esc(t.notes)}</small></span><button class="btn danger" data-deltun="${esc(t.id)}">Löschen</button></li>`).join('')}</ul>` : ''}
+      </section>
       <section>
         <h3>Tags (${tags.length})</h3>
         <p class="hint">Neue Tags entstehen einfach beim Bearbeiten eines Songs. Hier kannst du sie für alle Songs umbenennen oder entfernen.</p>
@@ -752,6 +955,17 @@ function viewSettings() {
     sync({ force: true }).then(() => toast(S.error || 'Synchronisiert.'));
   };
   $('#sReload').onclick = () => { cache = { commit: null, files: {} }; LS.set('sb.cache', cache); sync({ force: true }).then(() => toast(S.error || 'Neu geladen.')); };
+  $('#sTuning').onchange = e => {
+    let id = e.target.value;
+    if (id === '__new') id = addCustomTuning();
+    if (id) { settings.tuning = id; saveSettings(); }
+    viewSettings();
+  };
+  app.querySelectorAll('[data-deltun]').forEach(b => b.onclick = () => {
+    settings.customTunings = settings.customTunings.filter(t => t.id !== b.dataset.deltun);
+    if (settings.tuning === b.dataset.deltun) settings.tuning = 'gtr';
+    saveSettings(); viewSettings();
+  });
   $('#sTheme').onchange = e => {
     settings.theme = e.target.value; saveSettings();
     if (settings.theme === 'auto') delete document.documentElement.dataset.theme;

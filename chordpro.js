@@ -153,7 +153,10 @@ export function transposeChord(chord, n) {
   if (!n || !isChord(chord) || NC_RE.test(chord)) return chord;
   return chord.replace(/^([A-H][#b]?)(.*?)(?:\/([A-H][#b]?))?$/, (_, root, rest, bass) => {
     const flat = root.includes('b') || (!root.includes('#') && n < 0);
-    return shiftNote(root, n, flat) + rest + (bass ? '/' + shiftNote(bass, n, flat) : '');
+    const newRoot = shiftNote(root, n, flat);
+    // spell the bass note to fit the new root's key (A/C#, Bb/D)
+    const bassFlat = newRoot.includes('b') || newRoot === 'F';
+    return newRoot + rest + (bass ? '/' + shiftNote(bass, n, bassFlat) : '');
   });
 }
 
